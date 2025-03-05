@@ -1,12 +1,12 @@
 import streamlit as st
 from langchain_groq import ChatGroq
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain.memory import ConversationBufferMemory
 
 # Secure API Key Handling
 API_KEY = "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"
 
-# Initialize Groq Chat Model
+# Initialize Chat Model
 chat = ChatGroq(temperature=0.7, model_name="llama3-70b-8192", groq_api_key=API_KEY)
 
 # Initialize Conversation Memory
@@ -18,7 +18,7 @@ System Prompt: You are a highly skilled mathematician specializing in advanced c
 You apply these concepts to real-world problems, particularly in physics and computer science. Your explanations are clear, rigorous, and structured.
 
 Instructions for Generating Responses:
-1. Use a systematic, step-by-step approach like a professor explaining concepts.dont give much sentance
+1. Use a systematic, step-by-step approach like a professor explaining concepts.
 2. Break down problems into smaller logical steps before proceeding to calculations.
 3. Use proper LaTeX formatting for mathematical expressions.
 4. Provide detailed reasoning behind each step to ensure clarity.
@@ -27,14 +27,28 @@ Instructions for Generating Responses:
 """
 
 def query_math_ai(user_query):
-    past_chat_history = memory.load_memory_variables({}).get("chat_history", [])
-    messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=f"Past Chat: {past_chat_history}\n\nQuestion: {user_query}")
-    ]
+    # Retrieve past chat history from session state
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    
+    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    
+    # Append previous conversation messages
+    for msg in st.session_state.chat_history:
+        messages.append(msg)
+    
+    # Append the latest user query
+    user_message = HumanMessage(content=user_query)
+    messages.append(user_message)
+    
     try:
         response = chat.invoke(messages)
-        memory.save_context({"input": user_query}, {"output": response.content})
+        ai_message = AIMessage(content=response.content)
+        
+        # Save updated conversation history in session state
+        st.session_state.chat_history.append(user_message)
+        st.session_state.chat_history.append(ai_message)
+
         return response.content if response else "⚠️ No response received."
     except Exception as e:
         return f"⚠️ API Error: {str(e)}"
@@ -43,10 +57,9 @@ def query_math_ai(user_query):
 def main():
     st.set_page_config(page_title="AlgebrAI", page_icon="🧮", layout="wide")
 
-    # Custom CSS for chat alignment and icons
+    # Custom CSS for styling chat
     st.markdown("""
         <style>
-        
         .user-message {
             background-color: rgb(241 234 26);
             color: black;
@@ -76,24 +89,33 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Centering the title
+    # Title
     st.markdown("<h1 style='text-align: center;'>AlgebrAI - Advanced Math Chatbot</h1>", unsafe_allow_html=True)
 
+    # Initialize session state for messages
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display past chat messages
-    for message in st.session_state.messages:
-        st.markdown(message["content"], unsafe_allow_html=True)
-
+    # Retrieve and display past chat history
+    if "chat_history" in st.session_state:
+        for msg in st.session_state.chat_history:
+            role = "😀" if isinstance(msg, HumanMessage) else "🤖"
+            styled_msg = f"""
+                <div class="{'user-message' if role == '😀' else 'ai-message'}">
+                    <span>{role} : {msg.content}</span>
+                </div>
+            """
+            st.markdown(styled_msg, unsafe_allow_html=True)
+    
+    # User Input
     user_input = st.chat_input("🔢 Type your math question here:")
+    
     if user_input:
         user_message = f"""
             <div class='user-message'>
                 <span>😀 : {user_input}</span>
             </div>
         """
-        st.session_state.messages.append({"role": "user", "content": user_message})
         st.markdown(user_message, unsafe_allow_html=True)
 
         with st.spinner("🔍 Thinking..."):
@@ -104,7 +126,6 @@ def main():
                   <span>🤖 : {response}</span>
             </div>
         """
-        st.session_state.messages.append({"role": "assistant", "content": styled_response})
         st.markdown(styled_response, unsafe_allow_html=True)
 
 if __name__ == "__main__":
